@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QUACK.DRAW — Draw in the Air, AI Guesses!</title>
+  <meta name="description" content="QUACK.DRAW is a finger-tracking drawing game. Draw in the air on your webcam feed and an AI guesses what you drew in real time. Inspired by Google Quick Draw." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><text y='22' font-size='22'>✏️</text></svg>") 2 24, crosshair;
+    }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: #fffbea;
+      color: #2a2a2a;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== UTILITY ===== */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ===== PIXEL DUCK (CSS box-shadow art) ===== */
+    .pixel-duck-wrapper {
+      position: absolute;
+      bottom: 40px;
+      left: -40px;
+      animation: waddle-across 14s linear infinite;
+      z-index: 5;
+    }
+
+    .pixel-duck {
+      width: 4px;
+      height: 4px;
+      background: transparent;
+      animation: duck-walk 0.5s steps(2) infinite;
+      /* 8x8 grid = 32x32px at 4px/pixel */
+      box-shadow:
+        /* Row 1 — top of head */
+         8px  0px 0 0 #f5c800,
+        12px  0px 0 0 #f5c800,
+        16px  0px 0 0 #f5c800,
+        /* Row 2 */
+         4px  4px 0 0 #f5c800,
+         8px  4px 0 0 #f5c800,
+        12px  4px 0 0 #f5c800,
+        16px  4px 0 0 #f5c800,
+        20px  4px 0 0 #f5c800,
+        /* Row 3 — eye row */
+         4px  8px 0 0 #f5c800,
+         8px  8px 0 0 #f5c800,
+        12px  8px 0 0 #2a2a2a,  /* eye */
+        16px  8px 0 0 #f5c800,
+        20px  8px 0 0 #f0a500, /* beak start */
+        24px  8px 0 0 #f0a500, /* beak */
+        /* Row 4 — beak row */
+         4px 12px 0 0 #f5c800,
+         8px 12px 0 0 #f5c800,
+        12px 12px 0 0 #f5c800,
+        16px 12px 0 0 #f5c800,
+        20px 12px 0 0 #f0a500, /* beak */
+        /* Row 5 — body with wing */
+         4px 16px 0 0 #f5c800,
+         8px 16px 0 0 #fffde0, /* wing highlight */
+        12px 16px 0 0 #fffde0, /* wing highlight */
+        16px 16px 0 0 #f5c800,
+        /* Row 6 — lower body */
+         4px 20px 0 0 #f5c800,
+         8px 20px 0 0 #f5c800,
+        12px 20px 0 0 #f5c800,
+        16px 20px 0 0 #f5c800,
+        /* Row 7 — feet */
+         4px 24px 0 0 #f0a500,
+         8px 24px 0 0 #f0a500,
+        12px 24px 0 0 #f0a500,
+        16px 24px 0 0 #f0a500;
+    }
+
+    /* Frame 2: feet shift */
+    @keyframes duck-walk {
+      0% {
+        box-shadow:
+           8px  0px 0 0 #f5c800,
+          12px  0px 0 0 #f5c800,
+          16px  0px 0 0 #f5c800,
+           4px  4px 0 0 #f5c800,
+           8px  4px 0 0 #f5c800,
+          12px  4px 0 0 #f5c800,
+          16px  4px 0 0 #f5c800,
+          20px  4px 0 0 #f5c800,
+           4px  8px 0 0 #f5c800,
+           8px  8px 0 0 #f5c800,
+          12px  8px 0 0 #2a2a2a,
+          16px  8px 0 0 #f5c800,
+          20px  8px 0 0 #f0a500,
+          24px  8px 0 0 #f0a500,
+           4px 12px 0 0 #f5c800,
+           8px 12px 0 0 #f5c800,
+          12px 12px 0 0 #f5c800,
+          16px 12px 0 0 #f5c800,
+          20px 12px 0 0 #f0a500,
+           4px 16px 0 0 #f5c800,
+           8px 16px 0 0 #fffde0,
+          12px 16px 0 0 #fffde0,
+          16px 16px 0 0 #f5c800,
+           4px 20px 0 0 #f5c800,
+           8px 20px 0 0 #f5c800,
+          12px 20px 0 0 #f5c800,
+          16px 20px 0 0 #f5c800,
+           4px 24px 0 0 #f0a500,
+           8px 24px 0 0 transparent,
+          12px 24px 0 0 transparent,
+          16px 24px 0 0 #f0a500;
+      }
+      50% {
+        box-shadow:
+           8px  0px 0 0 #f5c800,
+          12px  0px 0 0 #f5c800,
+          16px  0px 0 0 #f5c800,
+           4px  4px 0 0 #f5c800,
+           8px  4px 0 0 #f5c800,
+          12px  4px 0 0 #f5c800,
+          16px  4px 0 0 #f5c800,
+          20px  4px 0 0 #f5c800,
+           4px  8px 0 0 #f5c800,
+           8px  8px 0 0 #f5c800,
+          12px  8px 0 0 #2a2a2a,
+          16px  8px 0 0 #f5c800,
+          20px  8px 0 0 #f0a500,
+          24px  8px 0 0 #f0a500,
+           4px 12px 0 0 #f5c800,
+           8px 12px 0 0 #f5c800,
+          12px 12px 0 0 #f5c800,
+          16px 12px 0 0 #f5c800,
+          20px 12px 0 0 #f0a500,
+           4px 16px 0 0 #f5c800,
+           8px 16px 0 0 #fffde0,
+          12px 16px 0 0 #fffde0,
+          16px 16px 0 0 #f5c800,
+           4px 20px 0 0 #f5c800,
+           8px 20px 0 0 #f5c800,
+          12px 20px 0 0 #f5c800,
+          16px 20px 0 0 #f5c800,
+           4px 24px 0 0 transparent,
+           8px 24px 0 0 #f0a500,
+          12px 24px 0 0 #f0a500,
+          16px 24px 0 0 transparent;
+      }
+    }
+
+    @keyframes waddle-across {
+      0%   { left: -40px; }
+      100% { left: calc(100% + 40px); }
+    }
+
+    /* ===== HERO ===== */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      /* Duck footprint pattern */
+      background-image:
+        radial-gradient(circle, #fde68a 1.5px, transparent 1.5px),
+        radial-gradient(circle, #fde68a 1px, transparent 1px),
+        radial-gradient(circle, #fde68a 1px, transparent 1px),
+        radial-gradient(circle, #fde68a 1.5px, transparent 1.5px),
+        radial-gradient(circle, #fde68a 1px, transparent 1px),
+        radial-gradient(circle, #fde68a 1px, transparent 1px);
+      background-size:
+        120px 120px,
+        120px 120px,
+        120px 120px,
+        120px 120px,
+        120px 120px,
+        120px 120px;
+      background-position:
+        20px 20px,
+        26px 10px,
+        14px 10px,
+        80px 80px,
+        86px 70px,
+        74px 70px;
+      background-color: #fffbea;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      padding: 40px 20px;
+    }
+
+    .hero-label {
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #b09a40;
+      letter-spacing: 1.5px;
+      margin-bottom: 24px;
+      opacity: 0.8;
+    }
+
+    .hero-logo {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(3rem, 8vw, 6rem);
+      color: #2a2a2a;
+      line-height: 1.1;
+      margin-bottom: 8px;
+      position: relative;
+      display: inline-block;
+    }
+
+    .hero-logo::after {
+      content: '';
+      position: absolute;
+      bottom: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 85%;
+      height: 14px;
+      background: #f5c800;
+      border-radius: 8px;
+      z-index: -1;
+      opacity: 0.6;
+    }
+
+    .hero-sub {
+      font-family: 'Nunito', sans-serif;
+      font-size: clamp(1rem, 2.5vw, 1.35rem);
+      color: #555;
+      font-weight: 600;
+      margin-top: 16px;
+      line-height: 1.7;
+    }
+
+    .hero-sub span {
+      display: block;
+    }
+
+    .cta-btn {
+      display: inline-block;
+      margin-top: 36px;
+      padding: 18px 48px;
+      background: #f5c800;
+      color: #2a2a2a;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.15rem;
+      text-decoration: none;
+      border-radius: 50px;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, background 0.2s ease;
+      box-shadow: 0 4px 20px rgba(245, 200, 0, 0.35);
+      letter-spacing: 0.5px;
+    }
+
+    .cta-btn:hover {
+      transform: scale(1.08);
+      background: #f0a500;
+      box-shadow: 0 6px 30px rgba(240, 165, 0, 0.45);
+    }
+
+    .cta-btn:active {
+      transform: scale(0.97);
+    }
+
+    .hero-note {
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 18px;
+      font-weight: 600;
+    }
+
+    /* ===== SECTION SHARED ===== */
+    section {
+      padding: 100px 0;
+    }
+
+    .section-heading {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      color: #2a2a2a;
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    /* ===== HOW IT WORKS ===== */
+    .how-it-works {
+      background: #fffbea;
+    }
+
+    .steps-row {
+      display: flex;
+      gap: 28px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .step-card {
+      background: #ffffff;
+      border: 2px solid #fde68a;
+      border-radius: 16px;
+      padding: 40px 32px;
+      text-align: center;
+      flex: 1 1 280px;
+      max-width: 320px;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    }
+
+    .step-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 12px 36px rgba(245, 200, 0, 0.2);
+    }
+
+    .step-number {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2.4rem;
+      margin-bottom: 12px;
+      line-height: 1;
+    }
+
+    .step-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.15rem;
+      color: #2a2a2a;
+      margin-bottom: 10px;
+    }
+
+    .step-desc {
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.95rem;
+      color: #666;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    /* ===== FEATURES ===== */
+    .features {
+      background: #fff8d6;
+    }
+
+    .features-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .feature-pill {
+      background: #f5c800;
+      color: #2a2a2a;
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 14px 26px;
+      border-radius: 50px;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, background 0.2s ease;
+      cursor: default;
+      user-select: none;
+    }
+
+    .feature-pill:hover {
+      transform: scale(1.07);
+      background: #f0a500;
+      box-shadow: 0 6px 20px rgba(240, 165, 0, 0.3);
+    }
+
+    /* ===== FOOTER CTA ===== */
+    .footer-cta {
+      background: #fffbea;
+      text-align: center;
+      padding: 100px 0 60px;
+    }
+
+    .footer-cta .section-heading {
+      margin-bottom: 12px;
+    }
+
+    .footer-sub {
+      font-family: 'Nunito', sans-serif;
+      font-size: 1.15rem;
+      color: #666;
+      font-weight: 600;
+      margin-bottom: 36px;
+    }
+
+    .footer-ack {
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 32px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.6;
+      font-weight: 600;
+    }
+
+    .footer-copy {
+      font-family: 'Fredoka One', cursive;
+      font-size: 0.9rem;
+      color: #c4a830;
+      margin-top: 24px;
+      padding-bottom: 32px;
+    }
+
+    /* ===== SCROLL REVEAL ===== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.25s; }
+    .reveal-delay-3 { transition-delay: 0.4s; }
+
+    /* ===== FLOATING DUCKS DECORATION ===== */
+    .float-duck {
+      position: absolute;
+      font-size: 2rem;
+      opacity: 0.12;
+      animation: float-up 6s ease-in-out infinite;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .float-duck:nth-child(1) { left: 8%; top: 15%; animation-delay: 0s; }
+    .float-duck:nth-child(2) { right: 10%; top: 25%; animation-delay: 1.5s; font-size: 1.5rem; }
+    .float-duck:nth-child(3) { left: 15%; bottom: 25%; animation-delay: 3s; font-size: 2.5rem; }
+    .float-duck:nth-child(4) { right: 18%; bottom: 20%; animation-delay: 0.8s; }
+    .float-duck:nth-child(5) { left: 50%; top: 10%; animation-delay: 2.2s; font-size: 1.8rem; }
+
+    @keyframes float-up {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50%      { transform: translateY(-18px) rotate(5deg); }
+    }
+
+    /* ===== HERO ENTRANCE ANIMATIONS ===== */
+    .hero-content > * {
+      opacity: 0;
+      animation: fade-in-up 0.8s ease-out forwards;
+    }
+
+    .hero-content > *:nth-child(1) { animation-delay: 0.1s; }
+    .hero-content > *:nth-child(2) { animation-delay: 0.25s; }
+    .hero-content > *:nth-child(3) { animation-delay: 0.45s; }
+    .hero-content > *:nth-child(4) { animation-delay: 0.6s; }
+    .hero-content > *:nth-child(5) { animation-delay: 0.75s; }
+
+    @keyframes fade-in-up {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+      .steps-row {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .step-card {
+        max-width: 400px;
+        width: 100%;
+      }
+
+      .feature-pill {
+        font-size: 0.85rem;
+        padding: 12px 20px;
+      }
+
+      .cta-btn {
+        padding: 16px 36px;
+        font-size: 1rem;
+      }
+
+      section {
+        padding: 70px 0;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-logo {
+        font-size: 2.6rem;
+      }
+
+      .hero-logo::after {
+        height: 10px;
+        bottom: 2px;
+      }
+
+      .section-heading {
+        font-size: 1.6rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== SECTION 1 — HERO ===== -->
+  <section class="hero" id="hero">
+    <!-- Floating duck decorations -->
+    <span class="float-duck">🦆</span>
+    <span class="float-duck">🦆</span>
+    <span class="float-duck">🦆</span>
+    <span class="float-duck">🦆</span>
+    <span class="float-duck">🦆</span>
+
+    <div class="hero-content">
+      <p class="hero-label">[ powered by ml5.js + mediapipe ]</p>
+      <h1 class="hero-logo">QUACK.DRAW</h1>
+      <div class="hero-sub">
+        <span>draw with your finger. let the AI guess.</span>
+        <span>no mouse. no keyboard. just your hand. 🦆</span>
+      </div>
+      <a href="game.html" class="cta-btn" id="cta-hero">START DRAWING →</a>
+      <p class="hero-note">inspired by Google Quick Draw — dataset used with acknowledgement</p>
+    </div>
+
+    <!-- Pixel Duck Mascot -->
+    <div class="pixel-duck-wrapper" aria-hidden="true">
+      <div class="pixel-duck"></div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 2 — HOW IT WORKS ===== -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <h2 class="section-heading reveal">HOW IT WORKS 🦆</h2>
+      <div class="steps-row">
+        <div class="step-card reveal reveal-delay-1" id="step-1">
+          <div class="step-number">01 🎥</div>
+          <div class="step-title">SHOW YOUR HAND</div>
+          <p class="step-desc">Point your index finger at the camera to begin drawing.</p>
+        </div>
+        <div class="step-card reveal reveal-delay-2" id="step-2">
+          <div class="step-number">02 ✏️</div>
+          <div class="step-title">DRAW IN THE AIR</div>
+          <p class="step-desc">Move your finger to draw on the live video feed.</p>
+        </div>
+        <div class="step-card reveal reveal-delay-3" id="step-3">
+          <div class="step-number">03 🤖</div>
+          <div class="step-title">AI GUESSES</div>
+          <p class="step-desc">Watch the AI recognize your doodle in real time.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 3 — FEATURES ===== -->
+  <section class="features" id="features">
+    <div class="container">
+      <h2 class="section-heading reveal">WHAT MAKES IT FUN</h2>
+      <div class="features-row">
+        <span class="feature-pill reveal reveal-delay-1">⏱️ 20 second timer</span>
+        <span class="feature-pill reveal reveal-delay-1">🧠 Real time AI recognition</span>
+        <span class="feature-pill reveal reveal-delay-2">☁️ No installation needed</span>
+        <span class="feature-pill reveal reveal-delay-2">🦆 Pixel duck companion</span>
+        <span class="feature-pill reveal reveal-delay-3">✋ Finger tracking via MediaPipe</span>
+        <span class="feature-pill reveal reveal-delay-3">📊 Quick Draw dataset</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== SECTION 4 — FOOTER CTA ===== -->
+  <footer class="footer-cta" id="footer">
+    <div class="container">
+      <h2 class="section-heading reveal">READY TO DRAW?</h2>
+      <p class="footer-sub reveal reveal-delay-1">your finger is the pen. the AI is watching.</p>
+      <div class="reveal reveal-delay-2">
+        <a href="game.html" class="cta-btn" id="cta-footer">START DRAWING →</a>
+      </div>
+      <p class="footer-ack reveal reveal-delay-3">
+        Built with inspiration from Google's Quick Draw experiment.<br />
+        Dataset used under Creative Commons license.
+      </p>
+      <p class="footer-copy reveal reveal-delay-3">© 2026 QUACK.DRAW 🦆</p>
+    </div>
+  </footer>
+
+  <script>
+    /* ===== SCROLL REVEAL ===== */
+    const revealElements = document.querySelectorAll('.reveal');
+
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.15,
+      rootMargin: '0px 0px -40px 0px'
+    });
+
+    revealElements.forEach(el => revealObserver.observe(el));
+
+    /* ===== PARALLAX FLOATING DUCKS ===== */
+    const floatDucks = document.querySelectorAll('.float-duck');
+    let ticking = false;
+
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollY = window.scrollY;
+          floatDucks.forEach((duck, i) => {
+            const speed = 0.02 + (i * 0.015);
+            duck.style.transform = `translateY(${-scrollY * speed}px)`;
+          });
+          ticking = false;
+        });
+        ticking = true;
+      }
+    });
+  </script>
+</body>
+</html>

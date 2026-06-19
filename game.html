@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QUACK.DRAW — Play!</title>
+  <meta name="description" content="Draw in the air with your finger and let the AI guess what you drew! Powered by MediaPipe and ml5.js DoodleNet." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- MediaPipe + ml5 -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+
+  <style>
+    /* ===== RESET ===== */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html {
+      cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><text y='22' font-size='22'>✏️</text></svg>") 2 24, crosshair;
+    }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: #fffbea;
+      color: #2a2a2a;
+      overflow-x: hidden;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== NAVBAR ===== */
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      background: #ffffff;
+      border-bottom: 2px solid #fde68a;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .navbar-logo {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.4rem;
+      color: #2a2a2a;
+      text-decoration: none;
+    }
+
+    .navbar-back {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #2a2a2a;
+      text-decoration: none;
+      padding: 8px 18px;
+      border-radius: 50px;
+      border: 2px solid #fde68a;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .navbar-back:hover {
+      background: #fde68a;
+      transform: scale(1.05);
+    }
+
+    /* ===== LOADING SCREEN ===== */
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      background: #fffbea;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+
+    .loading-screen.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .loading-text {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.6rem;
+      color: #2a2a2a;
+      margin-bottom: 20px;
+    }
+
+    .loading-bar-track {
+      width: 260px;
+      height: 12px;
+      background: #fde68a;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .loading-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: #f5c800;
+      border-radius: 10px;
+      transition: width 0.5s ease;
+    }
+
+    .loading-sub {
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.9rem;
+      color: #999;
+      font-weight: 600;
+    }
+
+    .start-btn-wrapper {
+      display: none;
+      margin-top: 28px;
+    }
+
+    .start-btn-wrapper.visible {
+      display: block;
+      animation: fade-in 0.4s ease;
+    }
+
+    .start-game-btn {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.2rem;
+      padding: 16px 48px;
+      background: #f5c800;
+      color: #2a2a2a;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s, background 0.2s;
+      box-shadow: 0 4px 20px rgba(245,200,0,0.35);
+    }
+
+    .start-game-btn:hover {
+      transform: scale(1.08);
+      background: #f0a500;
+      box-shadow: 0 6px 30px rgba(240,165,0,0.45);
+    }
+
+    /* ===== MAIN GAME LAYOUT ===== */
+    .game-wrapper {
+      display: flex;
+      gap: 24px;
+      padding: 20px 28px;
+      max-width: 1200px;
+      margin: 0 auto;
+      align-items: flex-start;
+    }
+
+    .game-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 0;
+    }
+
+    /* ===== WORD DISPLAY ===== */
+    .word-display {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.3rem;
+      background: #f5c800;
+      color: #2a2a2a;
+      padding: 12px 32px;
+      border-radius: 50px;
+      margin-bottom: 16px;
+      text-align: center;
+      box-shadow: 0 3px 12px rgba(245,200,0,0.3);
+      min-width: 200px;
+    }
+
+    /* ===== CANVAS AREA ===== */
+    .canvas-container {
+      position: relative;
+      width: 640px;
+      max-width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #1a1a1a;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 3px solid #fde68a;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .canvas-container video,
+    .canvas-container canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: 13px;
+    }
+
+    #webcam {
+      transform: scaleX(-1);
+      object-fit: cover;
+    }
+
+    #drawCanvas {
+      z-index: 2;
+      cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'><text y='22' font-size='22'>✏️</text></svg>") 2 24, crosshair;
+    }
+
+    #fingerCanvas {
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    /* ===== CANVAS CONTROLS ===== */
+    .canvas-controls {
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+      align-items: center;
+    }
+
+    .clear-btn {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 8px 20px;
+      background: #ffffff;
+      color: #2a2a2a;
+      border: 2px solid #fde68a;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .clear-btn:hover {
+      background: #fde68a;
+      transform: scale(1.05);
+    }
+
+    /* ===== AI GUESS DISPLAY ===== */
+    .ai-guess-bar {
+      margin-top: 14px;
+      text-align: center;
+      width: 100%;
+      max-width: 640px;
+    }
+
+    .ai-guess-main {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.2rem;
+      color: #2a2a2a;
+      padding: 10px 20px;
+      background: #fff;
+      border: 2px solid #fde68a;
+      border-radius: 12px;
+      display: inline-block;
+      min-width: 280px;
+      transition: background 0.3s, border-color 0.3s, transform 0.3s;
+    }
+
+    .ai-guess-main.correct {
+      background: #d4edda;
+      border-color: #28a745;
+      transform: scale(1.05);
+    }
+
+    .ai-guess-conf {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: #999;
+    }
+
+    .ai-guesses-list {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .guess-chip {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 0.78rem;
+      padding: 6px 14px;
+      background: #fff8d6;
+      border-radius: 50px;
+      color: #666;
+    }
+
+    .guess-chip .conf-bar {
+      display: inline-block;
+      height: 6px;
+      border-radius: 3px;
+      background: #f5c800;
+      margin-left: 6px;
+      vertical-align: middle;
+      transition: width 0.3s;
+    }
+
+    /* ===== SIDE PANEL ===== */
+    .side-panel {
+      width: 220px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-top: 50px;
+    }
+
+    /* Timer */
+    .timer-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .timer-svg {
+      width: 110px;
+      height: 110px;
+      transform: rotate(-90deg);
+    }
+
+    .timer-track {
+      fill: none;
+      stroke: #fde68a;
+      stroke-width: 6;
+    }
+
+    .timer-progress {
+      fill: none;
+      stroke: #f5c800;
+      stroke-width: 6;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.9s linear;
+    }
+
+    .timer-progress.urgent {
+      stroke: #e74c3c;
+    }
+
+    .timer-text {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.8rem;
+      fill: #2a2a2a;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .timer-label {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 6px;
+    }
+
+    /* Score */
+    .score-card {
+      background: #ffffff;
+      border: 2px solid #fde68a;
+      border-radius: 14px;
+      padding: 18px;
+      text-align: center;
+    }
+
+    .score-label {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 0.8rem;
+      color: #999;
+      margin-bottom: 6px;
+    }
+
+    .score-value {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.5rem;
+      color: #2a2a2a;
+    }
+
+    /* Round indicator */
+    .round-dots {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .round-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fde68a;
+      border: 2px solid #f5c800;
+      transition: background 0.3s;
+    }
+
+    .round-dot.won { background: #28a745; border-color: #28a745; }
+    .round-dot.lost { background: #e74c3c; border-color: #e74c3c; }
+    .round-dot.current { background: #f5c800; animation: pulse-dot 1s infinite; }
+
+    @keyframes pulse-dot {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+    }
+
+    /* ===== PIXEL DUCK COMPANION ===== */
+    .duck-companion {
+      position: fixed;
+      bottom: 20px;
+      right: 24px;
+      z-index: 50;
+    }
+
+    .duck-pixel {
+      width: 4px;
+      height: 4px;
+      background: transparent;
+      box-shadow:
+         8px  0px 0 0 #f5c800,
+        12px  0px 0 0 #f5c800,
+        16px  0px 0 0 #f5c800,
+         4px  4px 0 0 #f5c800,
+         8px  4px 0 0 #f5c800,
+        12px  4px 0 0 #f5c800,
+        16px  4px 0 0 #f5c800,
+        20px  4px 0 0 #f5c800,
+         4px  8px 0 0 #f5c800,
+         8px  8px 0 0 #f5c800,
+        12px  8px 0 0 #2a2a2a,
+        16px  8px 0 0 #f5c800,
+        20px  8px 0 0 #f0a500,
+        24px  8px 0 0 #f0a500,
+         4px 12px 0 0 #f5c800,
+         8px 12px 0 0 #f5c800,
+        12px 12px 0 0 #f5c800,
+        16px 12px 0 0 #f5c800,
+        20px 12px 0 0 #f0a500,
+         4px 16px 0 0 #f5c800,
+         8px 16px 0 0 #fffde0,
+        12px 16px 0 0 #fffde0,
+        16px 16px 0 0 #f5c800,
+         4px 20px 0 0 #f5c800,
+         8px 20px 0 0 #f5c800,
+        12px 20px 0 0 #f5c800,
+        16px 20px 0 0 #f5c800,
+         4px 24px 0 0 #f0a500,
+         8px 24px 0 0 #f0a500,
+        12px 24px 0 0 #f0a500,
+        16px 24px 0 0 #f0a500;
+    }
+
+    .duck-companion.bob .duck-pixel {
+      animation: duck-bob 0.5s ease-in-out infinite;
+    }
+
+    .duck-companion.spin .duck-pixel {
+      animation: duck-spin 0.6s ease-in-out;
+    }
+
+    .duck-companion.shake .duck-pixel {
+      animation: duck-shake 0.5s ease-in-out;
+    }
+
+    @keyframes duck-bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+
+    @keyframes duck-spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes duck-shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(3px); }
+    }
+
+    /* ===== OVERLAYS ===== */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 13px;
+      z-index: 10;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.4s, visibility 0.4s;
+    }
+
+    .overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .overlay-win {
+      background: rgba(245, 200, 0, 0.88);
+    }
+
+    .overlay-lose {
+      background: rgba(42, 42, 42, 0.85);
+    }
+
+    .overlay-emoji {
+      font-size: 3.5rem;
+      margin-bottom: 12px;
+      animation: bounce-in 0.5s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    .overlay-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+    }
+
+    .overlay-win .overlay-title { color: #2a2a2a; }
+    .overlay-lose .overlay-title { color: #fff; }
+
+    .overlay-desc {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 20px;
+    }
+
+    .overlay-win .overlay-desc { color: #555; }
+    .overlay-lose .overlay-desc { color: #ccc; }
+
+    .overlay-btn {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1rem;
+      padding: 12px 36px;
+      border-radius: 50px;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s;
+    }
+
+    .overlay-btn:hover { transform: scale(1.08); }
+
+    .overlay-win .overlay-btn {
+      background: #2a2a2a;
+      color: #f5c800;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+
+    .overlay-lose .overlay-btn {
+      background: #f5c800;
+      color: #2a2a2a;
+      box-shadow: 0 4px 16px rgba(245,200,0,0.3);
+    }
+
+    @keyframes bounce-in {
+      0% { transform: scale(0); }
+      60% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    /* ===== GAME OVER SCREEN ===== */
+    .game-over-screen {
+      position: fixed;
+      inset: 0;
+      background: #fffbea;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.5s, visibility 0.5s;
+    }
+
+    .game-over-screen.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .game-over-score {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(4rem, 12vw, 7rem);
+      color: #2a2a2a;
+      line-height: 1;
+    }
+
+    .game-over-label {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      color: #999;
+      margin-bottom: 16px;
+    }
+
+    .game-over-msg {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(1.2rem, 3vw, 1.8rem);
+      color: #f0a500;
+      margin-bottom: 40px;
+    }
+
+    .game-over-btns {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .game-over-btns .btn-primary {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.1rem;
+      padding: 16px 40px;
+      background: #f5c800;
+      color: #2a2a2a;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s, background 0.2s;
+      box-shadow: 0 4px 20px rgba(245,200,0,0.35);
+      text-decoration: none;
+    }
+
+    .game-over-btns .btn-primary:hover {
+      transform: scale(1.08);
+      background: #f0a500;
+    }
+
+    .game-over-btns .btn-secondary {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.1rem;
+      padding: 16px 40px;
+      background: transparent;
+      color: #2a2a2a;
+      border: 2px solid #fde68a;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.2s;
+      text-decoration: none;
+    }
+
+    .game-over-btns .btn-secondary:hover {
+      transform: scale(1.05);
+      background: #fde68a;
+    }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 900px) {
+      .game-wrapper {
+        flex-direction: column;
+        align-items: center;
+        padding: 16px;
+      }
+
+      .side-panel {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding-top: 0;
+        gap: 14px;
+      }
+
+      .timer-wrapper { order: 1; }
+      .score-card { order: 2; flex: 1; min-width: 140px; }
+
+      .canvas-container {
+        width: 100%;
+        max-width: 560px;
+      }
+    }
+
+    @media (max-width: 500px) {
+      .navbar { padding: 10px 16px; }
+      .navbar-logo { font-size: 1.1rem; }
+      .word-display { font-size: 1rem; padding: 10px 20px; }
+      .timer-svg { width: 80px; height: 80px; }
+
+      .duck-companion {
+        bottom: 10px;
+        right: 12px;
+        transform: scale(0.8);
+      }
+    }
+
+    /* ===== INSTRUCTIONS OVERLAY ===== */
+    .instructions-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255, 251, 234, 0.97);
+      z-index: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.4s, visibility 0.4s;
+      overflow-y: auto;
+    }
+
+    .instructions-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .instructions-title {
+      font-family: 'Fredoka One', cursive;
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+      color: #2a2a2a;
+      margin-bottom: 28px;
+    }
+
+    .instructions-gestures {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .gesture-card {
+      background: #ffffff;
+      border: 2px solid #fde68a;
+      border-radius: 16px;
+      padding: 24px 32px;
+      text-align: center;
+      min-width: 180px;
+    }
+
+    .gesture-emoji {
+      font-size: 2.5rem;
+      margin-bottom: 8px;
+    }
+
+    .gesture-label {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.1rem;
+      color: #2a2a2a;
+      margin-bottom: 4px;
+    }
+
+    .gesture-desc {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: #888;
+    }
+
+    .instructions-practice-label {
+      font-family: 'Nunito', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #999;
+      margin-bottom: 12px;
+    }
+
+    .instructions-preview {
+      width: 280px;
+      height: 210px;
+      border-radius: 14px;
+      border: 3px solid #fde68a;
+      overflow: hidden;
+      margin-bottom: 28px;
+      background: #1a1a1a;
+      position: relative;
+    }
+
+    .instructions-preview video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    .instructions-preview canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .instructions-btn {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.15rem;
+      padding: 16px 44px;
+      background: #f5c800;
+      color: #2a2a2a;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s, background 0.2s;
+      box-shadow: 0 4px 20px rgba(245,200,0,0.35);
+    }
+
+    .instructions-btn:hover:not(:disabled) {
+      transform: scale(1.08);
+      background: #f0a500;
+      box-shadow: 0 6px 30px rgba(240,165,0,0.45);
+    }
+
+    .instructions-btn:disabled {
+      background: #ddd;
+      color: #999;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="index.html" class="navbar-logo">QUACK.DRAW 🦆</a>
+    <a href="index.html" class="navbar-back" id="back-btn">[ ← BACK ]</a>
+  </nav>
+
+  <!-- LOADING SCREEN -->
+  <div class="loading-screen" id="loadingScreen">
+    <div class="loading-text" id="loadingText">loading models... 🦆</div>
+    <div class="loading-bar-track">
+      <div class="loading-bar-fill" id="loadingBar"></div>
+    </div>
+    <div class="loading-sub" id="loadingSub">preparing MediaPipe + DoodleNet</div>
+    <div class="start-btn-wrapper" id="startBtnWrapper">
+      <button class="start-game-btn" id="startGameBtn">START DRAWING →</button>
+    </div>
+  </div>
+
+  <!-- INSTRUCTIONS OVERLAY -->
+  <div class="instructions-overlay" id="instructionsOverlay">
+    <div class="instructions-title">HOW TO DRAW 🦆</div>
+    <div class="instructions-gestures">
+      <div class="gesture-card">
+        <div class="gesture-emoji">✊</div>
+        <div class="gesture-label">PINCH = Pen Down</div>
+        <div class="gesture-desc">Pinch thumb + index to draw</div>
+      </div>
+      <div class="gesture-card">
+        <div class="gesture-emoji">🖐️</div>
+        <div class="gesture-label">OPEN = Pen Up</div>
+        <div class="gesture-desc">Open hand to lift the pen</div>
+      </div>
+    </div>
+    <div class="instructions-practice-label">Practice your gesture below 👇</div>
+    <div class="instructions-preview">
+      <video id="instructionsPreview" autoplay playsinline></video>
+      <canvas id="practiceCanvas"></canvas>
+    </div>
+    <button class="instructions-btn" id="instructionsStartBtn" disabled>loading... 🦆</button>
+  </div>
+
+  <!-- GAME OVER SCREEN -->
+  <div class="game-over-screen" id="gameOverScreen">
+    <div class="game-over-label">YOUR SCORE</div>
+    <div class="game-over-score" id="finalScore">0 / 5</div>
+    <div class="game-over-msg" id="finalMsg">GREAT DRAWING! 🦆✨</div>
+    <div class="game-over-btns">
+      <button class="btn-primary" id="playAgainBtn">PLAY AGAIN 🦆</button>
+      <a href="index.html" class="btn-secondary">GO HOME</a>
+    </div>
+  </div>
+
+  <!-- MAIN GAME -->
+  <div class="game-wrapper" id="gameArea">
+    <div class="game-main">
+      <!-- Word to draw -->
+      <div class="word-display" id="wordDisplay">DRAW: ___</div>
+
+      <!-- Canvas area -->
+      <div class="canvas-container" id="canvasContainer">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="drawCanvas"></canvas>
+        <canvas id="fingerCanvas"></canvas>
+
+        <!-- Win overlay -->
+        <div class="overlay overlay-win" id="overlayWin">
+          <div class="overlay-emoji">🎉</div>
+          <div class="overlay-title">CORRECT!</div>
+          <div class="overlay-desc" id="winDesc">The AI recognized your drawing!</div>
+          <button class="overlay-btn" id="nextWordBtnWin">NEXT WORD →</button>
+        </div>
+
+        <!-- Lose overlay -->
+        <div class="overlay overlay-lose" id="overlayLose">
+          <div class="overlay-emoji">⏰</div>
+          <div class="overlay-title">TIME'S UP!</div>
+          <div class="overlay-desc" id="loseDesc">The AI couldn't guess it</div>
+          <button class="overlay-btn" id="nextWordBtnLose">NEXT WORD →</button>
+        </div>
+      </div>
+
+      <!-- Canvas controls -->
+      <div class="canvas-controls">
+        <button class="clear-btn" id="clearBtn">[ CLEAR ]</button>
+      </div>
+
+      <!-- AI Guess -->
+      <div class="ai-guess-bar" id="aiGuessBar">
+        <div class="ai-guess-main" id="aiGuessMain">AI thinks: waiting... 🤔</div>
+        <div class="ai-guesses-list" id="aiGuessesList"></div>
+      </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="side-panel">
+      <!-- Timer -->
+      <div class="timer-wrapper">
+        <svg class="timer-svg" viewBox="0 0 120 120">
+          <circle class="timer-track" cx="60" cy="60" r="50"></circle>
+          <circle class="timer-progress" id="timerProgress" cx="60" cy="60" r="50"
+                  stroke-dasharray="314.16" stroke-dashoffset="0"></circle>
+          <text class="timer-text" id="timerText" x="60" y="60" transform="rotate(90 60 60)">20</text>
+        </svg>
+        <div class="timer-label">SECONDS LEFT</div>
+      </div>
+
+      <!-- Score -->
+      <div class="score-card">
+        <div class="score-label">SCORE</div>
+        <div class="score-value" id="scoreValue">✅ 0 / 5</div>
+        <div class="round-dots" id="roundDots">
+          <div class="round-dot" data-round="0"></div>
+          <div class="round-dot" data-round="1"></div>
+          <div class="round-dot" data-round="2"></div>
+          <div class="round-dot" data-round="3"></div>
+          <div class="round-dot" data-round="4"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIXEL DUCK COMPANION -->
+  <div class="duck-companion" id="duckCompanion">
+    <div class="duck-pixel"></div>
+  </div>
+
+  <script>
+    // ===== WORD LIST =====
+    // Only include words that exist in DoodleNet's 345 Quick Draw categories
+    const ALL_WORDS = [
+      'cat','dog','house','sun','tree','fish','star','bird','flower',
+      'apple','book','moon','cloud','bicycle','hat','cup','key',
+      'duck','cake','car','eye','clock','door','leaf','snowflake',
+      'circle','triangle','square','diamond','crown','heart',
+      'rainbow','lightning','umbrella','mountain','campfire'
+    ];
+
+    // Map game words to all acceptable DoodleNet labels that should count as correct
+    const WORD_TO_LABELS = {
+      'cat': ['cat'],
+      'dog': ['dog'],
+      'house': ['house','barn'],
+      'sun': ['sun'],
+      'tree': ['tree','bush','house plant'],
+      'fish': ['fish'],
+      'star': ['star','hexagon'],
+      'bird': ['bird','flamingo','duck'],
+      'flower': ['flower'],
+      'apple': ['apple'],
+      'book': ['book'],
+      'moon': ['moon'],
+      'cloud': ['cloud'],
+      'bicycle': ['bicycle'],
+      'hat': ['hat','helmet','crown'],
+      'cup': ['cup','coffee cup'],
+      'key': ['key'],
+      'duck': ['duck','bird'],
+      'cake': ['cake','birthday cake'],
+      'car': ['car','bus','ambulance'],
+      'eye': ['eye'],
+      'clock': ['clock','alarm clock'],
+      'door': ['door'],
+      'leaf': ['leaf'],
+      'snowflake': ['snowflake'],
+      'circle': ['circle'],
+      'triangle': ['triangle'],
+      'square': ['square'],
+      'diamond': ['diamond'],
+      'crown': ['crown'],
+      'heart': ['heart'],
+      'rainbow': ['rainbow'],
+      'lightning': ['lightning'],
+      'umbrella': ['umbrella'],
+      'mountain': ['mountain'],
+      'campfire': ['campfire']
+    };
+
+    // ===== GAME STATE =====
+    let gameWords = [];
+    let currentRound = 0;
+    let score = 0;
+    let currentWord = '';
+    let timeLeft = 20;
+    let timerInterval = null;
+    let classifyInterval = null;
+    let isPlaying = false;
+    let roundActive = false;
+
+    // ===== DRAWING STATE =====
+    let prevX = null;
+    let prevY = null;
+    let isDrawing = false;
+
+    // ===== SMOOTHING BUFFER (last 5 positions) =====
+    const SMOOTH_BUFFER_SIZE = 5;
+    const smoothBuffer = [];
+
+    // ===== DOM REFS =====
+    const loadingScreen = document.getElementById('loadingScreen');
+    const loadingBar = document.getElementById('loadingBar');
+    const loadingText = document.getElementById('loadingText');
+    const loadingSub = document.getElementById('loadingSub');
+    const startBtnWrapper = document.getElementById('startBtnWrapper');
+    const startGameBtn = document.getElementById('startGameBtn');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const finalScore = document.getElementById('finalScore');
+    const finalMsg = document.getElementById('finalMsg');
+    const playAgainBtn = document.getElementById('playAgainBtn');
+    const wordDisplay = document.getElementById('wordDisplay');
+    const webcamEl = document.getElementById('webcam');
+    const drawCanvas = document.getElementById('drawCanvas');
+    const fingerCanvas = document.getElementById('fingerCanvas');
+    const drawCtx = drawCanvas.getContext('2d');
+    const fingerCtx = fingerCanvas.getContext('2d');
+    const instructionsOverlay = document.getElementById('instructionsOverlay');
+    const instructionsStartBtn = document.getElementById('instructionsStartBtn');
+    const instructionsPreview = document.getElementById('instructionsPreview');
+    const practiceCanvas = document.getElementById('practiceCanvas');
+    const practiceCtx = practiceCanvas.getContext('2d');
+
+    // Offscreen canvas for classification — white bg + strokes only
+    const classifyCanvas = document.createElement('canvas');
+    const classifyCtx = classifyCanvas.getContext('2d');
+    const clearBtn = document.getElementById('clearBtn');
+    const overlayWin = document.getElementById('overlayWin');
+    const overlayLose = document.getElementById('overlayLose');
+    const winDesc = document.getElementById('winDesc');
+    const loseDesc = document.getElementById('loseDesc');
+    const nextWordBtnWin = document.getElementById('nextWordBtnWin');
+    const nextWordBtnLose = document.getElementById('nextWordBtnLose');
+    const aiGuessMain = document.getElementById('aiGuessMain');
+    const aiGuessesList = document.getElementById('aiGuessesList');
+    const timerProgress = document.getElementById('timerProgress');
+    const timerText = document.getElementById('timerText');
+    const scoreValue = document.getElementById('scoreValue');
+    const roundDots = document.querySelectorAll('.round-dot');
+    const duckCompanion = document.getElementById('duckCompanion');
+
+    const TIMER_CIRCUMFERENCE = 2 * Math.PI * 50; // 314.16
+
+    // ===== INIT MODELS =====
+    let mediapipeReady = false;
+    let doodlenetReady = false;
+    let classifier = null;
+    let camera = null;
+
+    function updateLoadingProgress() {
+      let progress = 0;
+      if (mediapipeReady) progress += 50;
+      if (doodlenetReady) progress += 50;
+      loadingBar.style.width = progress + '%';
+
+      if (progress === 100) {
+        loadingText.textContent = 'ready to quack! 🦆';
+        loadingSub.textContent = 'all models loaded';
+        startBtnWrapper.classList.add('visible');
+      }
+    }
+
+    // --- MediaPipe Hands ---
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onHandResults);
+
+    // Start camera
+    function startCamera() {
+      camera = new Camera(webcamEl, {
+        onFrame: async () => {
+          await hands.send({ image: webcamEl });
+        },
+        width: 640,
+        height: 480
+      });
+      camera.start().then(() => {
+        mediapipeReady = true;
+        loadingSub.textContent = 'MediaPipe loaded ✓ loading DoodleNet...';
+        updateLoadingProgress();
+
+        // Connect webcam stream to the practice preview video
+        if (webcamEl.srcObject) {
+          instructionsPreview.srcObject = webcamEl.srcObject;
+          instructionsPreview.play().catch(() => {});
+        }
+
+        // Enable the instructions start button
+        instructionsStartBtn.disabled = false;
+        instructionsStartBtn.textContent = 'GOT IT — START! 🦆';
+      });
+    }
+
+    // --- ml5 DoodleNet ---
+    function loadDoodleNet() {
+      classifier = ml5.imageClassifier('DoodleNet', () => {
+        console.log('DoodleNet ready');
+        doodlenetReady = true;
+        loadingSub.textContent = 'DoodleNet loaded ✓';
+        updateLoadingProgress();
+      });
+    }
+
+    // Init
+    startCamera();
+    loadDoodleNet();
+
+    // ===== CANVAS SIZING =====
+    // Classification canvas is a fixed 256x256 square for optimal DoodleNet input
+    const CLASSIFY_SIZE = 256;
+    classifyCanvas.width = CLASSIFY_SIZE;
+    classifyCanvas.height = CLASSIFY_SIZE;
+
+    function sizeCanvases() {
+      const container = document.getElementById('canvasContainer');
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      drawCanvas.width = w;
+      drawCanvas.height = h;
+      fingerCanvas.width = w;
+      fingerCanvas.height = h;
+      // classifyCanvas stays at fixed CLASSIFY_SIZE x CLASSIFY_SIZE
+    }
+
+    window.addEventListener('resize', sizeCanvases);
+    // Initial size after a short delay to allow layout
+    setTimeout(sizeCanvases, 200);
+
+    // ===== HAND TRACKING =====
+    const PINCH_THRESHOLD = 40; // pixels — below = pen down, above = pen up
+
+    function onHandResults(results) {
+      // Clear finger indicator
+      fingerCtx.clearRect(0, 0, fingerCanvas.width, fingerCanvas.height);
+
+      // Clear practice canvas
+      practiceCtx.clearRect(0, 0, practiceCanvas.width, practiceCanvas.height);
+
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        prevX = null;
+        prevY = null;
+        isDrawing = false;
+        return;
+      }
+
+      const landmarks = results.multiHandLandmarks[0];
+      const indexTip = landmarks[8];  // Index fingertip
+      const thumbTip = landmarks[4];  // Thumb tip
+
+      // Mirror x for both landmarks
+      const rawX = drawCanvas.width - indexTip.x * drawCanvas.width;
+      const rawY = indexTip.y * drawCanvas.height;
+      const thumbX = drawCanvas.width - thumbTip.x * drawCanvas.width;
+      const thumbY = thumbTip.y * drawCanvas.height;
+
+      // Push to smoothing buffer and average last 5 frames
+      smoothBuffer.push({ x: rawX, y: rawY });
+      if (smoothBuffer.length > SMOOTH_BUFFER_SIZE) smoothBuffer.shift();
+
+      const x = smoothBuffer.reduce((sum, p) => sum + p.x, 0) / smoothBuffer.length;
+      const y = smoothBuffer.reduce((sum, p) => sum + p.y, 0) / smoothBuffer.length;
+
+      // Calculate pinch distance (Euclidean in pixel space — use raw for responsiveness)
+      const pinchDist = Math.sqrt((rawX - thumbX) ** 2 + (rawY - thumbY) ** 2);
+      const isPinching = pinchDist < PINCH_THRESHOLD;
+
+      // Always show fingertip dot — solid when pinching, hollow when open
+      if (isPinching) {
+        // Solid yellow dot + glow = pen is DOWN
+        fingerCtx.beginPath();
+        fingerCtx.arc(x, y, 10, 0, Math.PI * 2);
+        fingerCtx.fillStyle = '#f5c800';
+        fingerCtx.fill();
+        // Outer glow
+        fingerCtx.beginPath();
+        fingerCtx.arc(x, y, 16, 0, Math.PI * 2);
+        fingerCtx.strokeStyle = 'rgba(245,200,0,0.4)';
+        fingerCtx.lineWidth = 2;
+        fingerCtx.stroke();
+      } else {
+        // Hollow outline dot = pen is UP
+        fingerCtx.beginPath();
+        fingerCtx.arc(x, y, 8, 0, Math.PI * 2);
+        fingerCtx.strokeStyle = '#f5c800';
+        fingerCtx.lineWidth = 2.5;
+        fingerCtx.stroke();
+      }
+
+      // Draw practice dot on instructions preview if overlay is visible
+      if (instructionsOverlay.classList.contains('visible')) {
+        const pw = practiceCanvas.width || 280;
+        const ph = practiceCanvas.height || 210;
+        // Size practice canvas to match its container
+        const previewBox = practiceCanvas.parentElement;
+        if (practiceCanvas.width !== previewBox.clientWidth || practiceCanvas.height !== previewBox.clientHeight) {
+          practiceCanvas.width = previewBox.clientWidth;
+          practiceCanvas.height = previewBox.clientHeight;
+        }
+        const px = practiceCanvas.width - indexTip.x * practiceCanvas.width;
+        const py = indexTip.y * practiceCanvas.height;
+
+        if (isPinching) {
+          practiceCtx.beginPath();
+          practiceCtx.arc(px, py, 8, 0, Math.PI * 2);
+          practiceCtx.fillStyle = '#f5c800';
+          practiceCtx.fill();
+          practiceCtx.beginPath();
+          practiceCtx.arc(px, py, 13, 0, Math.PI * 2);
+          practiceCtx.strokeStyle = 'rgba(245,200,0,0.4)';
+          practiceCtx.lineWidth = 2;
+          practiceCtx.stroke();
+        } else {
+          practiceCtx.beginPath();
+          practiceCtx.arc(px, py, 6, 0, Math.PI * 2);
+          practiceCtx.strokeStyle = '#f5c800';
+          practiceCtx.lineWidth = 2;
+          practiceCtx.stroke();
+        }
+      }
+
+      if (!roundActive) {
+        prevX = null;
+        prevY = null;
+        return;
+      }
+
+      if (isPinching) {
+        if (prevX !== null && prevY !== null) {
+          drawCtx.beginPath();
+          drawCtx.moveTo(prevX, prevY);
+          drawCtx.lineTo(x, y);
+          drawCtx.strokeStyle = '#2a2a2a';
+          drawCtx.lineWidth = 10;
+          drawCtx.lineCap = 'round';
+          drawCtx.lineJoin = 'round';
+          drawCtx.stroke();
+        }
+        prevX = x;
+        prevY = y;
+        isDrawing = true;
+      } else {
+        // Pen lift — release pinch
+        prevX = null;
+        prevY = null;
+        isDrawing = false;
+      }
+    }
+
+    // ===== CLASSIFICATION =====
+    const MIN_DRAWN_PIXELS = 200; // minimum non-transparent pixels to trigger classification
+
+    function canvasHasContent() {
+      const imgData = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+      const data = imgData.data;
+      let count = 0;
+      // Check alpha channel (every 4th byte) — non-zero = drawn pixel
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 0) count++;
+        if (count >= MIN_DRAWN_PIXELS) return true;
+      }
+      return false;
+    }
+
+    // Build a clean white-background, centered, scaled square canvas for DoodleNet
+    function prepareClassifyCanvas() {
+      // Step 1: Fill with white
+      classifyCtx.fillStyle = '#ffffff';
+      classifyCtx.fillRect(0, 0, CLASSIFY_SIZE, CLASSIFY_SIZE);
+
+      // Step 2: Find bounding box of drawn content
+      const imgData = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+      const data = imgData.data;
+      let minX = drawCanvas.width, minY = drawCanvas.height, maxX = 0, maxY = 0;
+      let hasContent = false;
+
+      for (let py = 0; py < drawCanvas.height; py++) {
+        for (let px = 0; px < drawCanvas.width; px++) {
+          const idx = (py * drawCanvas.width + px) * 4;
+          if (data[idx + 3] > 0) { // non-transparent pixel
+            hasContent = true;
+            if (px < minX) minX = px;
+            if (px > maxX) maxX = px;
+            if (py < minY) minY = py;
+            if (py > maxY) maxY = py;
+          }
+        }
+      }
+
+      if (!hasContent) {
+        // Nothing drawn — just draw the whole canvas scaled down
+        classifyCtx.drawImage(drawCanvas, 0, 0, CLASSIFY_SIZE, CLASSIFY_SIZE);
+        return;
+      }
+
+      // Step 3: Add padding around bounding box
+      const padding = 28;
+      minX = Math.max(0, minX - padding);
+      minY = Math.max(0, minY - padding);
+      maxX = Math.min(drawCanvas.width, maxX + padding);
+      maxY = Math.min(drawCanvas.height, maxY + padding);
+
+      const bboxW = maxX - minX;
+      const bboxH = maxY - minY;
+
+      // Step 4: Scale to fit within CLASSIFY_SIZE while maintaining aspect ratio, centered
+      const targetPadding = 20; // padding within classify canvas
+      const availableSize = CLASSIFY_SIZE - targetPadding * 2;
+      const scale = Math.min(availableSize / bboxW, availableSize / bboxH);
+
+      const scaledW = bboxW * scale;
+      const scaledH = bboxH * scale;
+      const offsetX = (CLASSIFY_SIZE - scaledW) / 2;
+      const offsetY = (CLASSIFY_SIZE - scaledH) / 2;
+
+      // Step 5: Draw the cropped, centered, scaled drawing onto the classify canvas
+      classifyCtx.drawImage(
+        drawCanvas,
+        minX, minY, bboxW, bboxH,        // source rect (crop from draw canvas)
+        offsetX, offsetY, scaledW, scaledH // dest rect (centered in classify canvas)
+      );
+    }
+
+    function startClassifying() {
+      if (classifyInterval) clearInterval(classifyInterval);
+      classifyInterval = setInterval(() => {
+        if (!roundActive || !classifier) return;
+
+        // Only classify if there's actual drawing on the canvas
+        if (!canvasHasContent()) {
+          aiGuessMain.textContent = 'AI thinks: waiting for drawing... ✏️';
+          aiGuessMain.classList.remove('correct');
+          aiGuessesList.innerHTML = '';
+          return;
+        }
+
+        // Copy strokes onto white background, centered and scaled for clean classification
+        prepareClassifyCanvas();
+
+        // Set duck to bobbing while guessing
+        setDuckState('bob');
+        classifier.classify(classifyCanvas, (err, results) => {
+          if (err) { console.error(err); return; }
+          if (!roundActive) return;
+          displayGuesses(results);
+          checkForMatch(results);
+        });
+      }, 500);  // Classify every 500ms for faster feedback
+    }
+
+    function displayGuesses(results) {
+      if (!results || results.length === 0) {
+        aiGuessMain.textContent = 'AI thinks: drawing... 🤔';
+        aiGuessMain.classList.remove('correct');
+        aiGuessesList.innerHTML = '';
+        return;
+      }
+
+      const top = results[0];
+      const conf = (top.confidence * 100).toFixed(1);
+      aiGuessMain.innerHTML = `AI thinks: <strong>${top.label}</strong> <span class="ai-guess-conf">(${conf}%)</span>`;
+
+      // Top 3
+      let chipsHTML = '';
+      const shown = results.slice(0, 3);
+      shown.forEach(r => {
+        const c = (r.confidence * 100).toFixed(0);
+        const barW = Math.max(4, r.confidence * 60);
+        chipsHTML += `<span class="guess-chip">${r.label} ${c}% <span class="conf-bar" style="width:${barW}px"></span></span>`;
+      });
+      aiGuessesList.innerHTML = chipsHTML;
+    }
+
+    function checkForMatch(results) {
+      if (!results || results.length === 0) return;
+      const word = currentWord.toLowerCase();
+
+      // Get acceptable labels for this word
+      const acceptableLabels = (WORD_TO_LABELS[word] || [word]).map(l => l.toLowerCase());
+
+      // Check top 10 results — if any acceptable label appears with decent confidence, it's a match
+      const topN = results.slice(0, 10);
+      for (const result of topN) {
+        const label = result.label.toLowerCase();
+        // Check if the DoodleNet label matches any of our acceptable labels
+        for (const acceptable of acceptableLabels) {
+          if (label === acceptable || label.includes(acceptable) || acceptable.includes(label)) {
+            // For top-1, any confidence is fine. For others, need at least 5% confidence
+            if (result === results[0] || result.confidence > 0.05) {
+              roundWin();
+              return;
+            }
+          }
+        }
+      }
+
+      // Also check reverse: if the top label matches the word directly
+      const topLabel = results[0].label.toLowerCase();
+      if (topLabel === word || topLabel.includes(word) || word.includes(topLabel)) {
+        roundWin();
+      }
+    }
+
+    // ===== TIMER =====
+    function startTimer() {
+      timeLeft = 20;
+      updateTimerDisplay();
+      timerProgress.classList.remove('urgent');
+
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        updateTimerDisplay();
+
+        if (timeLeft <= 5) {
+          timerProgress.classList.add('urgent');
+        }
+
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          roundLose();
+        }
+      }, 1000);
+    }
+
+    function updateTimerDisplay() {
+      timerText.textContent = timeLeft;
+      const offset = TIMER_CIRCUMFERENCE * (1 - timeLeft / 20);
+      timerProgress.setAttribute('stroke-dashoffset', offset);
+    }
+
+    // ===== GAME FLOW =====
+    function shuffleAndPick(arr, n) {
+      const shuffled = [...arr].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, n);
+    }
+
+    function initGame() {
+      score = 0;
+      currentRound = 0;
+      gameWords = shuffleAndPick(ALL_WORDS, 5);
+      updateScore();
+      resetRoundDots();
+      gameOverScreen.classList.remove('visible');
+      startRound();
+    }
+
+    function startRound() {
+      roundActive = true;
+      currentWord = gameWords[currentRound];
+      wordDisplay.textContent = `DRAW: ${currentWord.toUpperCase()}`;
+
+      // Clear canvases
+      clearDrawing();
+      prevX = null;
+      prevY = null;
+
+      // Hide overlays
+      overlayWin.classList.remove('visible');
+      overlayLose.classList.remove('visible');
+
+      // Reset AI guess
+      aiGuessMain.textContent = 'AI thinks: waiting... 🤔';
+      aiGuessMain.classList.remove('correct');
+      aiGuessesList.innerHTML = '';
+
+      // Mark current round dot
+      roundDots[currentRound].classList.add('current');
+
+      // Start timer and classification
+      startTimer();
+      startClassifying();
+      setDuckState('bob');
+    }
+
+    function roundWin() {
+      if (!roundActive) return;
+      roundActive = false;
+      clearInterval(timerInterval);
+      clearInterval(classifyInterval);
+
+      score++;
+      updateScore();
+      roundDots[currentRound].classList.remove('current');
+      roundDots[currentRound].classList.add('won');
+
+      winDesc.textContent = `The AI recognized your ${currentWord}!`;
+      aiGuessMain.classList.add('correct');
+      setDuckState('spin');
+
+      setTimeout(() => {
+        overlayWin.classList.add('visible');
+      }, 500);
+    }
+
+    function roundLose() {
+      if (!roundActive) return;
+      roundActive = false;
+      clearInterval(timerInterval);
+      clearInterval(classifyInterval);
+
+      roundDots[currentRound].classList.remove('current');
+      roundDots[currentRound].classList.add('lost');
+
+      loseDesc.textContent = `The AI couldn't guess ${currentWord}`;
+      setDuckState('shake');
+
+      setTimeout(() => {
+        overlayLose.classList.add('visible');
+      }, 400);
+    }
+
+    function nextWord() {
+      overlayWin.classList.remove('visible');
+      overlayLose.classList.remove('visible');
+
+      currentRound++;
+      if (currentRound >= 5) {
+        endGame();
+        return;
+      }
+      startRound();
+    }
+
+    function endGame() {
+      clearInterval(timerInterval);
+      clearInterval(classifyInterval);
+      roundActive = false;
+
+      finalScore.textContent = `${score} / 5`;
+
+      if (score === 5) finalMsg.textContent = 'PERFECT QUACKER! 🦆🏆';
+      else if (score >= 3) finalMsg.textContent = 'GREAT DRAWING! 🦆✨';
+      else if (score >= 1) finalMsg.textContent = 'KEEP PRACTICING! 🦆';
+      else finalMsg.textContent = 'THE AI IS CONFUSED 🦆💀';
+
+      setTimeout(() => {
+        gameOverScreen.classList.add('visible');
+      }, 600);
+    }
+
+    function updateScore() {
+      scoreValue.textContent = `✅ ${score} / 5`;
+    }
+
+    function resetRoundDots() {
+      roundDots.forEach(dot => {
+        dot.classList.remove('won', 'lost', 'current');
+      });
+    }
+
+    function clearDrawing() {
+      drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    }
+
+    // ===== DUCK STATE =====
+    function setDuckState(state) {
+      duckCompanion.className = 'duck-companion';
+      if (state) {
+        // Force reflow to restart animation
+        void duckCompanion.offsetWidth;
+        duckCompanion.classList.add(state);
+      }
+    }
+
+    // ===== INSTRUCTIONS FLOW =====
+    function showInstructions() {
+      // Reconnect stream if needed (e.g. after play again)
+      if (webcamEl.srcObject && instructionsPreview.srcObject !== webcamEl.srcObject) {
+        instructionsPreview.srcObject = webcamEl.srcObject;
+        instructionsPreview.play().catch(() => {});
+      }
+      // Button state depends on MediaPipe readiness
+      if (mediapipeReady) {
+        instructionsStartBtn.disabled = false;
+        instructionsStartBtn.textContent = 'GOT IT — START! 🦆';
+      } else {
+        instructionsStartBtn.disabled = true;
+        instructionsStartBtn.textContent = 'loading... 🦆';
+      }
+      instructionsOverlay.classList.add('visible');
+    }
+
+    function hideInstructions() {
+      instructionsOverlay.classList.remove('visible');
+    }
+
+    // ===== EVENT LISTENERS =====
+    startGameBtn.addEventListener('click', () => {
+      loadingScreen.classList.add('hidden');
+      sizeCanvases();
+      showInstructions();
+    });
+
+    instructionsStartBtn.addEventListener('click', () => {
+      hideInstructions();
+      initGame();
+    });
+
+    clearBtn.addEventListener('click', () => {
+      clearDrawing();
+      prevX = null;
+      prevY = null;
+    });
+
+    nextWordBtnWin.addEventListener('click', nextWord);
+    nextWordBtnLose.addEventListener('click', nextWord);
+
+    playAgainBtn.addEventListener('click', () => {
+      gameOverScreen.classList.remove('visible');
+      showInstructions();
+    });
+  </script>
+</body>
+</html>
